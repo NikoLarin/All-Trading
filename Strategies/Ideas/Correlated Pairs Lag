@@ -1,0 +1,1 @@
+Create a strategy that can take two correlated assets ( BTC/ETH | NVDA/AMD | SPY/QQQ ), and if a 'large move' is detected on ONE asset and the other lags, create a market order in the direction of the 'Non-Lagger'
