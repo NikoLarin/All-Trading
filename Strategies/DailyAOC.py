@@ -14,71 +14,43 @@ import requests
 import time
 from datetime import date
 from dateutil.relativedelta import relativedelta
-from alpaca_tools import headers, open_stock_price, current_stock_price
-
-def aoc(ticker):
-    '''
-    this function pulls open and close data for 100 days and calculates the 
-    average open to close change for one day   
-    '''
-    today = date.today()
-    year_ago = today - relativedelta(years=1) # finds the date from a year ago today
-
-    url = f"https://data.alpaca.markets/v2/stocks/bars?symbols={ticker}&timeframe=1D&start={year_ago}&limit=100&adjustment=raw&feed=sip&sort=asc"
-
-    response  = requests.get(url, headers=headers())
-    data = response.json()
-
-    bars = data["bars"][ticker]
-
-    abs_pct_changes = [] # creates list of pct changes from the loop
-
-    for candle in bars: # find pct changes loop
-        closeD = candle["c"]
-        openD = candle["o"]
-
-        if openD != 0: 
-            abs_pct_changes.append(abs(((closeD - openD) / openD)))
-
-    today_aoc = sum(abs_pct_changes) / len(abs_pct_changes)
-    
-    return today_aoc / 2 # returns todays AOC
+from alpaca_tools import headers, open_stock_price, current_stock_price, aoc, BASE_URL
 
 def aoc_strategy(ticker):
-        while True: # while called
-            hour = time.localtime() # find the hour
-            while hour[3] > 9 or hour[3] < 16: # if we are in market hours
-                today_aoc = aoc(ticker) # call todays AOC
-                stock_price = current_stock_price(ticker) #call my stock price function
+        while True:    
+            hour = time.localtime() # current time
+            while hour[3] > 9 or hour[3] < 16:
+                today_aoc = aoc(ticker)
+                stock_price = current_stock_price(ticker)
                 
                 today = str(date.today())
-                today = today.replace('-', '') #formatting
+                today = today.replace('-', '')
 
                 today_open = open_stock_price(ticker)
-                highbar = today_open + today_open * today_aoc # calculate low and high bar for AOC
+                highbar = today_open + today_open * today_aoc
                 lowbar =  today_open - today_open * today_aoc
 
-
-                if stock_price > highbar: # conditional) if above - SELL CALL SPREAD
+                if stock_price > highbar: # if price is higher than top AOC
                     otype = 'C'
-                    strike = round(highbar, 0)
+                    strike = round(stock_price, 0)
                     long_leg = f'{ticker}{today[2:]}{otype}00{int(strike + 1)}000'
                 
-                elif stock_price < lowbar: # conditional) if below - SELL PUT SPREAD
+                elif stock_price < lowbar: #if price is lower than bottom AOC
                     otype = 'P'
-                    strike = round(lowbar, 0)
+                    strike = round(stock_price, 0)
                     long_leg = f'{ticker}{today[2:]}{otype}00{int(strike - 1)}000'
                 
                 else:
-                     print("Waiting") # while we arent above/below AOC print waiting 
-                     time.sleep(60) # sleep for 60 seconds
-                     continue # check again
+                     print(f'Highbar:{highbar} Lowbar: {lowbar}')
+                     print("Waiting")
+                     time.sleep(60)
+                     continue
                 
-                short_leg = f'{ticker}{today[2:]}{otype}00{int(strike)}000' # creates the options code for ATM option
+                short_leg = f'{ticker}{today[2:]}{otype}00{int(strike)}000'
                 
-                url = "https://paper-api.alpaca.markets/v2/orders"
+                url = f'{BASE_URL}/orders'
 
-                payload = {
+                payload = { #creates the debit spread
                     "type": "market",
                     "time_in_force": "day",
                     "legs": [
@@ -100,7 +72,11 @@ def aoc_strategy(ticker):
                 response = requests.post(url, json=payload, headers=headers())
 
                 print(response.text)
-                break # break the loop once a trade has been executed = ONLY 1 trade a day
+                break
+            break # ends the loop once a trade is executed, only one trade a day.
+            
+print(aoc('SPY')) # just prints the AOC that was calculated
+aoc_strategy('SPY') # runs strategy
 
-aoc_strategy('SPY')
+
 
