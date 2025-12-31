@@ -4,45 +4,19 @@ from ta import add_all_ta_features
 import requests
 from ta.volatility import BollingerBands
 from ta.utils import dropna
-from alpaca_tools import get_ohlc, current_stock_price, headers
+from alpaca_tools import get_ohlc, current_stock_price, headers, stock_order_mkt, bollinger_bands, BASE_URL
 
-URL = "https://paper-api.alpaca.markets/v2/orders"
+URL = f'{BASE_URL}/orders'
 
-def bollinger_bands(t):    
-    df = pd.DataFrame(get_ohlc('SPY','1Min'))
-    df = df.rename(columns={  # names columns
-                'o': 'Open',
-                'h': 'High',
-                'l': 'Low',
-                'c': 'Close',
-                't': 'Date'
-            }
-    )
-    df = dropna(df)
-    
-    indicator_bb = BollingerBands(close=df["Close"], window=t, window_dev=2)
-
-    # Add Bollinger Bands features
-    df['bb_bbm'] = indicator_bb.bollinger_mavg()
-    df['bb_bbh'] = indicator_bb.bollinger_hband()
-    df['bb_bbl'] = indicator_bb.bollinger_lband()
-
-    # Add Bollinger Band high indicator
-    df['bb_bbhi'] = indicator_bb.bollinger_hband_indicator()
-
-    # Add Bollinger Band low indicator
-    df['bb_bbli'] = indicator_bb.bollinger_lband_indicator()
-
-    return df['bb_bbh'].iloc[-2], df['bb_bbm'].iloc[-2], df['bb_bbl'].iloc[-2]
-
+ticker = input("Enter the ticker to trade(ALL CAPS): ")
+amt = int(input("Input the # of shares: "))
 trading = True
-
 
 while trading == True:
     hour = time.localtime()
     while (hour[3] >= 9 and hour[4] >= 30)  or hour[3] < 16:
         
-        t = [60, 15]
+        t = [60, 15] # bollinger look backs
         bb = []
         for look_back in t:    
             bb.append(bollinger_bands(look_back))
@@ -58,66 +32,39 @@ while trading == True:
         lowband1 = bb_l_60
         lowband2 = bb_l_15
 
-        price = current_stock_price('SPY')
+        price = current_stock_price('SPY') # get spy stock price 
 
         print(f'Upper: {highband1}\nPrice: {price}\nLower: {lowband1})')
-        time.sleep(5)
+        time.sleep(1) # for safety no spam...
 
-
+#----------------SHORT ORDER CONDITION----------------#
         if price > highband1 and price > highband2:
-            #short
             short = True
-            payload = {
-            "type": "market",
-            "time_in_force": "day",
-            "symbol": "SPY",
-            "qty": "1",
-            "side": "sell"
-        }
-            response = requests.post(URL, json=payload, headers=headers())
+            response = requests.post(URL, json=stock_order_mkt(ticker=ticker, side='sell', amt=amt), headers=headers()) # order submission
             print('ORDER SENT')
             while short == True:
-                if price == midband1:
-                    payload = {
-                    "type": "market",
-                    "time_in_force": "day",
-                    "symbol": "SPY",
-                    "qty": "1"
-                }
-                    response = requests.post(URL, json=payload, headers=headers())
+                if price == midband1:# take profit
+                    response = requests.post(URL, json=stock_order_mkt(ticker, side='buy', amt=amt), headers=headers()) #take profit order submission
                     short = False
                     print('FLATTEN ORDER SENT')
         
-        elif price < lowband1 and price < lowband2:
-            #long
+#----------------LONG ORDER CONDITION----------------#
+        elif price < lowband1 and price < lowband2: 
             long = True
-            payload = {
-            "type": "market",
-            "time_in_force": "day",
-            "symbol": "SPY",
-            "side": "buy",
-            "qty": "1"
-        }
-            response = requests.post(URL, json=payload, headers=headers())
+            response = requests.post(URL, json=stock_order_mkt(ticker=ticker, side='buy',amt=amt), headers=headers()) # order submission
             print('ORDER SENT')
             while long == True:
-                if price == midband1:
-                    payload = {
-                    "type": "market",
-                    "time_in_force": "day",
-                    "symbol": "SPY",
-                    "qty": "1",
-                    "side": "sell"
-                }
-                    response = requests.post(URL, json=payload, headers=headers())
+                if price == midband1: # take profit
+                    response = requests.post(URL, json=stock_order_mkt(ticker=ticker, side='sell',amt=amt), headers=headers()) #take profit order submission
                     long = False
                     print('FLATTEN ORDER SENT')
+
+
+#----------------RESTART LOOP IF NO CONDITIONS MET----------------#        
         else:
             time.sleep(60)
             continue
 
 
-
-        
-    
     print('Restarting loop: Searching for trade :)')
+
