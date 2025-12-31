@@ -66,7 +66,56 @@ def is_market_open():
     response = response.json()
 
     return response['is_open'] #returns bool if mkt open/closed
+def chart(ticker, tf):
+    df = pd.DataFrame(get_ohlc(ticker, tf)) # create the data frame
+    df = df.rename(columns={  # names columns
+            'o': 'Open',
+            'h': 'High',
+            'l': 'Low',
+            'c': 'Close',
+            't': 'Date'
+    })
 
+    df['Date'] = pd.to_datetime(df['Date'])
+    df.set_index('Date', inplace=True)
+    df.sort_index(inplace=True)
+
+    mpf.plot( # create chart
+        df, #name of our df
+        type='candle', #candlestick chart
+        volume=False,
+        style='yahoo', #yahoo style chart
+        title=f'{ticker} Daily Candles' #just the title
+    )
+
+def get_ohlc(ticker, tf):
+    '''
+    This function gets OHLC data for a year ago
+    IS ONLY RELIABLE FOR DAILY CANDLES AS OF NOW
+    '''
+    
+    today = date.today()
+    year_ago = today - relativedelta(years=1)
+    
+    url = f"https://data.alpaca.markets/v2/stocks/bars?&symbols={ticker}&timeframe={tf}&start={year_ago}&adjustment=raw&feed=sip&sort=asc"
+
+    response  = requests.get(url, headers=headers())
+    data = response.json()
+    
+    bars = data["bars"][ticker]
+    
+    all_candles = []
+
+    for candle in bars: # loop over the candle data and store it in a dict
+        candle_data = { 
+            'o': candle['o'],
+            'h': candle['h'],
+            'l': candle['l'],
+            'c': candle['c'],        
+            't': candle['t'],
+        }
+        all_candles.append(candle_data) #append the dict to a list
+    return all_candles
 
 #----------OPTIONS----------#
 def option(oCode): #needs symbol and option code
