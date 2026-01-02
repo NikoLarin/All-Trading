@@ -1,3 +1,9 @@
+'''
+Summary
+
+Future Fixes:
+1. Abstract and clean up the code, it current 
+'''
 import ccxt
 import pandas as pd
 from alpaca_tools import bollinger_bands
@@ -128,6 +134,7 @@ while trading == True:
                 continue
     
     else:
+        print(f'HighBand: {hsBand}\nPrice: {curprice}\nLowBand: {lsBand}')
         time.sleep(10)
         print("Searching for trades")
-        print(f'HighBand: {hsBand}\nPrice: {curprice}\nLowBand: {lsBand}')
+        
