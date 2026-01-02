@@ -81,3 +81,4 @@ ticker = ['SPY', 'QQQ']
 for t in ticker:
     print(aoc(t))
 aoc_strategy(ticker)
+
