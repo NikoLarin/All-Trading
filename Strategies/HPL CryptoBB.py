@@ -9,14 +9,9 @@ dex = ccxt.hyperliquid({
     "walletAddress": "YOURwalletADDRESS :)",
     "privateKey": "YOURprivateKEY :)",
     })
-
-
-
-
 symbol = 'SOL/USDC:USDC'
 
 dex.set_leverage(20, symbol)  # ← ADD THIS LINE (example: 10x)
-
 
 def bollinger_bands(t):    
     df = pd.DataFrame(ohlc)
@@ -31,7 +26,7 @@ def bollinger_bands(t):
     df = dropna(df)
 
 
-    indicator_bb = BollingerBands(close=df[3], window=t, window_dev=1)
+    indicator_bb = BollingerBands(close=df[3], window=t, window_dev=2)
 
     # Add Bollinger Bands features
     df['bb_bbm'] = indicator_bb.bollinger_mavg()
@@ -125,7 +120,7 @@ while trading == True:
                 symbol = "SOL/USDC:USDC"
                 order_type = "market"
                 side = "sell"
-                amount = dex.fetch_positions([symbol])[0]["contracts"]
+                amount = 0.1 # doesnt dynamically CLOSE BE CAREFUL
                 price = float(dex.fetch_ticker(symbol)["last"])
 
                 dex.create_order(symbol, order_type, side, amount, price=price, params={"reduceOnly":True})
