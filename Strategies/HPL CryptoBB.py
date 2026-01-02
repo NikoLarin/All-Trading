@@ -2,7 +2,9 @@
 Summary
 
 Future Fixes:
-1. Abstract and clean up the code, it current 
+1. Abstract and clean up the code
+2. Make output data clearer, it just prints the hmBB price without any description.
+3. You need to clear up the bollinger bands indicator function. The current function has weird parameters.
 '''
 import ccxt
 import pandas as pd
