@@ -21,20 +21,21 @@ current_value = np.sqrt((dte - time_passed) / dte) * extrinsic_value
 # Estimate theta
 theta = -extrinsic_value / (2 * dte * np.sqrt(1 - time_passed/dte))
 
-# Build interactive plot
-fig = go.Figure()
+fig = go.Figure() # create the 
 
 fig.add_trace(go.Scatter(
     x=time_range,
     y=theta_decay,
+    line=dict(color='red'),
     mode="lines",
     name="Extrinsic Value"
 ))
 
-# Highlight current time point
+# Go over the line chart with markers, see individual intervals
 fig.add_trace(go.Scatter(
     x=[time_passed],
     y=[current_value],
+    line=dict(color='black'),
     mode="markers",
     marker=dict(size=10),
     name="Current Position"
