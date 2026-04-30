@@ -1,0 +1,9 @@
+Implement simple bollinger bands
+
+SHORT CONDITION
+when price exceeds top band, short off the next red candle close
+take profit is the center band
+
+LONG CONDITION
+when price exceeds the bottom band, long off the next green candle close
+take profit is the center band
