@@ -1,12 +1,11 @@
 import requests
-import dotenv
 
 def headers():
     return {
         "accept": "application/json",
         "content-type": "application/json",
-        "APCA-API-KEY-ID": 'urkey',
-        "APCA-API-SECRET-KEY": 'urkey',
+        "APCA-API-KEY-ID": '',
+        "APCA-API-SECRET-KEY": '',
     }
 
 def get_price_change(sym1,sym2):
@@ -28,7 +27,7 @@ def get_price_change(sym1,sym2):
 url = "https://paper-api.alpaca.markets/v2/orders"
 
 
-syms = [[NVDA, AMD], [GLD,SLV], [SPY, QQQ]]
+syms = [['NVDA', 'AMD'], ['GLD', 'SLV'], ['SPY', 'QQQ']]
 while True:
     for i in syms:
         list = get_price_change(i[0], i[1])
@@ -37,14 +36,14 @@ while True:
         sym2_pct_change = ((list[1][1] + (list[1][0])) / list[1][1] -1) * 100
         
         
-        if sym1_pct_change - sym2_pct_change > .4:
+        if sym1_pct_change - sym2_pct_change > .2:
             #buy mkt sym2
             #set take profit @ sym1 pct_change * .5 * sym2_close + sym2_close
             
             payload = {
             "type": "market",
             "time_in_force": "day",
-            "take_profit": { "limit_price": f'{sym1_pct_change * .5 * list[1][1] + list[1][1]}'},
+            "take_profit": { "limit_price": f'{(sym1_pct_change / 100) * .5 * list[1][1] + list[1][1]}'},
             "symbol": f'{list[1][2]}',
             "notional": "100",
             "side": "buy"
@@ -54,13 +53,13 @@ while True:
         
             print(response.text)
         
-        if sym2_pct_change - sym1_pct_change > .4:
+        if sym2_pct_change - sym1_pct_change > .2:
             #buy mkt sym1
             #set take profit @ sym2 pct_change * .5 * sym1_close + sym1_close
             payload = {
             "type": "market",
             "time_in_force": "day",
-            "take_profit": { "limit_price": f'{sym2_pct_change * .5 * list[0][1] + list[0][1]}'},
+            "take_profit": { "limit_price": f'{(sym2_pct_change / 100) * .5 * list[0][1] + list[0][1]}'},
             "symbol": f'{list[0][2]}',
             "notional": "100",
             "side": "buy"
@@ -70,5 +69,7 @@ while True:
         
             print(response.text)
         
-        print(sym1_pct_change, sym2_pct_change)
+        print(sym1_pct_change, sym2_pct_change, sym2_pct_change / 100 * .5 * list[0][1] + list[0][1], sym1_pct_change / 100 * .5 * list[1][1] + list[1][1])
+
                 
+        
