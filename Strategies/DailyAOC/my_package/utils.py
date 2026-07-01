@@ -4,4 +4,10 @@ def open_stock_price(sym):
     response = requests.get(url, headers=headers()) #calls headers function
     response = response.json()
 
-    return response['dailyBar']['o']
+    return (response['dailyBar']['o']
+
+def is_market_open() -> bool: 
+    time = datetime.now()
+    if time.hour > 9 and time.minute > 30 and time.hour < 16:
+        return True
+         
