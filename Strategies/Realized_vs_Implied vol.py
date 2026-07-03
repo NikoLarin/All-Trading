@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import requests
 import json
+from collections import namedtuple
 load_dotenv()
 
 def get_headers() -> dict:
@@ -24,30 +25,12 @@ def get_headers() -> dict:
         "APCA-API-SECRET-KEY": secret_key,
     }
 
-def get_implied_vol(ticker :str,price , date :str):
-    url = f"https://data.alpaca.markets/v1beta1/options/snapshots/{ticker}?feed=opra&limit=1000&type=put&strike_price_lte={price}&expiration_date={date}"
-    
-    response = requests.get(url, headers=get_headers())
-    response = response.json()
-    allCodes = sorted(response['snapshots'].keys())
-    
-    atm_option_code = allCodes[-1]
-    
-    atm_iv = response['snapshots'][atm_option_code]['impliedVolatility']
-
-    return atm_iv
-
-
 def get_historical_closes(tickers_list :list): 
             
-    #Logic for creating/formatting URL ticker string
-    url_string = ''
-    
-    for ticker in tickers_list:
-        url_string += f'{ticker}%2C' # creates a string of ticker like this "AAPL%2CTSLA%2CGOOGL%2C"
-    
+    symbols = ",".join(tickers_list) # formatting for api urll
+
     #stopping at [:-3] because the %2C format needs to be excluded on the last ticker
-    url = f"https://data.alpaca.markets/v2/stocks/bars?symbols={url_string[:-3]}&timeframe=1D&start=2026-06-02&limit=1000&adjustment=raw&feed=sip&sort=desc"
+    url = f"https://data.alpaca.markets/v2/stocks/bars?symbols={symbols}&timeframe=1D&start=2026-06-02&limit=1000&adjustment=raw&feed=sip&sort=desc"
 
     response = requests.get(url, headers=get_headers())
     response.raise_for_status()
@@ -61,53 +44,53 @@ def get_historical_closes(tickers_list :list):
         closes_list.append(closes)
         current_price_list.append(closes[0])
     
-    
-    return closes_list, current_price_list
+    return pd.DataFrame(closes_list, index=tickers_list)
 
-def get_implied_move(ticker_list :list):
-    '''A function to get the move implied by IV '''
-    # we need to format the option URL to get the ATM option 
-    url = "https://data.alpaca.markets/v1beta1/options/snapshots?symbols=AAPL260202C00300000%2CAAPL240315C00625000&feed=opra&limit=100"
-
-
-
-    #IV * Price * sqrt(trading days to exp/252)
-    pass
-
-def get_historical_volatility(close_data: list, tickers_list: list):
+def get_historical_volatility(closes_df):
     """Calculate historical volatility from list of closes."""
+    daily_returns = closes_df.pct_change(axis=1)
+
+    # 2. Calculate the standard deviation across the columns for each row
+    # (We drop the first column '0' because pct_change makes it NaN)
+    historical_volatility = daily_returns.std(axis=1) * np.sqrt(252)
     
-    # Create one DataFrame with all tickers
+    recent_price = closes_df[0]
+    df = pd.DataFrame(recent_price)
+    df["HV"]=historical_volatility.round(4)
+    # 3. View your volatilities rounded nicely
+    return df
+
+def get_implied_vol(tickers_list :list, recent_price :float, date :str):
+    tickers_and_price = list(zip(tickers_list, recent_price))
+    at_the_money_iv_list = []
+    for ticker_data in (tickers_and_price):
     
-    closes_df = pd.DataFrame(dict(zip(tickers_list, close_data)))
+        url = f"https://data.alpaca.markets/v1beta1/options/snapshots/{ticker_data[0]}?feed=opra&limit=1000&type=put&strike_price_lte={ticker_data[1]}&expiration_date={date}"
 
-    # Calculate returns and volatility for all at once
-    returns = closes_df.pct_change()
-    volatility = (returns.std() * np.sqrt(252))
-    
-    return volatility.round(4)   # returns a pandas Series
+        response = requests.get(url, headers=get_headers())
+        response = response.json()
+        allCodes = sorted(response['snapshots'].keys())
+        
+        try:
+            at_the_money_option_code = allCodes[-1] # get last option code in json format : SPY260717P00635000
+        except IndexError:
+            at_the_money_iv_list.append(0)
+            continue
+        at_the_money_iv = response['snapshots'][at_the_money_option_code]['impliedVolatility']
 
-tickers_list = ["SPY", "QQQ", "HOOD", "AMD", "NVDA", "PYPL", "ORCL", "AAPL", "RIOT", "META"]
+        at_the_money_iv_list.append(at_the_money_iv)
 
-historical_closes = get_historical_closes(tickers_list)
-volatility_series = get_historical_volatility(historical_closes[0], tickers_list)
+        
+    return pd.DataFrame(at_the_money_iv_list, columns=["IV"], index=tickers_list)
 
-dte = math.sqrt(10 / 365)
+tickers_list = ["SPY", "QQQ", "AAPL"]
 
-df = pd.DataFrame(columns=["Tickers"],data=tickers_list)
-df["Price"] = historical_closes[1]
-df["HV"] = volatility_series.to_numpy()
-df["Expected Move"] = round(df["HV"] * df["Price"] * dte, 2)
-df["Upper"] = df["Price"] + df["Expected Move"]
-df["Lower"] = df["Price"] - df["Expected Move"]
+historical_volatility = get_historical_volatility(get_historical_closes(tickers_list))
+implied_volatility_list = (get_implied_vol(tickers_list, historical_volatility[0], "2026-07-15"))
 
-implied_volatility_list = []
-for ticker in range(len(tickers_list)):
-    implied_volatility_list.append(get_implied_vol(tickers_list[ticker], df["Price"].iloc[ticker], "2026-07-10"))
+final_df = pd.DataFrame(data=historical_volatility)
 
-df["IV"] = implied_volatility_list
-df["IV Expected Move"] = (dte * 1.2 * df["IV"] * df["Price"])
-df["IV Upper"] = df["Price"] + df["IV Expected Move"]
-df["IV Lower"] = df["Price"] - df["IV Expected Move"]
-df["IV - HV"] = df["IV"] - df["HV"]
-print(df)
+final_df["IV"] = implied_volatility_list
+final_df.rename(columns={'0': 'Price'}, inplace=True)
+
+print(final_df)
