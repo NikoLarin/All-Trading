@@ -8,11 +8,12 @@ import json
 from datetime import datetime, timedelta
 load_dotenv()
 
+
 def get_headers() -> dict: 
     """Return Alpaca API headers from .env file."""
     
-    api_key = os.getenv("APCA_API_KEY_ID")
-    secret_key = os.getenv("APCA_API_SECRET_KEY")
+    api_key = ""
+    secret_key = ""
     
     if not api_key or not secret_key:
         raise ValueError(
@@ -64,7 +65,7 @@ def get_implied_vol(tickers_list :list, recent_price :float, date :str):
     '''A fucntion to call the alpaca api to get a list of options codes <= the current price (puts only)
         The function specifically parses the implied volatility of the at the money option.
     '''
-    
+    options_codes = []
     tickers_and_price = list(zip(tickers_list, recent_price)) #format [[ticker, current_price],[ticker_current_price]]
     at_the_money_iv_list = []
     for ticker_data in (tickers_and_price):
@@ -83,31 +84,62 @@ def get_implied_vol(tickers_list :list, recent_price :float, date :str):
         at_the_money_iv = response['snapshots'][at_the_money_option_code]['impliedVolatility'] # index at the money option iv
 
         at_the_money_iv_list.append(at_the_money_iv)
-
+        options_codes.append(allCodes)
         
-    return pd.DataFrame(at_the_money_iv_list, columns=["IV"], index=tickers_list)
+    return pd.DataFrame(at_the_money_iv_list, columns=["IV"], index=tickers_list), options_codes
+
+
+    # 5. Set the final option code and return
+    matched_df["put code"] = matched_df["real_code"]
+    return matched_df
 
 if __name__ == "__main__":
+    # --- 1. Setup & Configurations ---
     tickers_list = ["SPY", "QQQ", "AAPL", "TSLA", "NVDA", "MU", "INTC", "PLTR", "MSTR", 
                     "AMZN", "MSFT", "META", "HOOD", "IREN", "AMD", "SOFI", "GOOG"]
+    dte = 1
+    expiration_date = (timedelta(days=dte) + datetime.now()).strftime("%Y-%m-%d")
 
-    dte = 6
-    expiration_date = (timedelta(days=dte) + datetime.now())
-
-    historical_volatility = get_historical_volatility(get_historical_closes(tickers_list)) # Gives us a dataframe with stock price and HV indexed by ticker
-    implied_volatility = (get_implied_vol(tickers_list, historical_volatility[0], expiration_date.strftime("%Y-%m-%d"))) # Implied volatility by ticker in a dataframe 
+    # --- 2. Fetch API Data ---
+    historical_volatility = get_historical_volatility(get_historical_closes(tickers_list)) 
+    implied_volatility, raw_codes_list = get_implied_vol(tickers_list, historical_volatility[0], expiration_date) 
     
-    '''This section builds our clean dataframe containing tickers with an 
-    implied volatility that is at least 10% larger than historical volatility'''
-    final_df = pd.DataFrame(data=historical_volatility)
-
+    # --- 3. Filter for High-Juice Volatility (IV > HV by 10%+) ---
+    final_df = pd.DataFrame(data=historical_volatility).rename(columns={0: 'Price'})
     final_df["IV"] = implied_volatility
-    final_df.rename(columns={0: 'Price'}, inplace=True)
     final_df["Difference"] = (final_df["IV"] / final_df["HV"]) - 1 
-    final_df = final_df[final_df["Difference"] > 0.1] # filter rows where (iv / hv) - 1 < .10
+    final_df = final_df[final_df["Difference"] > 0.1].reset_index(names='Tickers')
 
-    final_df["HV Expected"] = final_df["Price"] * math.sqrt(dte / 365) * final_df["HV"] # Stock price * sqrt(dte/365) * HV
-    final_df["IV Expected"] = final_df["Price"] * math.sqrt(dte / 365) * final_df["IV"] # Stock price * sqrt(dte/365) * IV
+    # --- 4. Mathematical Modeling for Expected Move ---
+    time_factor = math.sqrt(dte / 365)
+    final_df["HV Expected"] = final_df["Price"] * time_factor * final_df["HV"] 
+    final_df["IV Expected"] = final_df["Price"] * time_factor * final_df["IV"] 
+    final_df["Price - IV_Expected"] = round(final_df["Price"] - final_df["IV Expected"])
+
+    # --- 5. Clean & Flatten Real Market Options Chain ---
+    flat_codes = [code for sublist in raw_codes_list for code in sublist]
+    real_chain = pd.DataFrame({"real_code": flat_codes})
     
-    print(final_df)
+    # Standard OCC slicing (last 15 chars are Date + Put/Call + Strike)
+    real_chain["Tickers"] = real_chain["real_code"].str[:-15]
+    real_chain["real_strike"] = real_chain["real_code"].str[-8:].astype(float) / 1000
+
+    # --- 6. Match Target Strikes to Active Market Contracts ---
+    # Sorting is a strict requirement for pd.merge_asof to function correctly
+    real_chain = real_chain.sort_values("real_strike")
+    final_df = final_df.sort_values("Price - IV_Expected")
+
+    matched_df = pd.merge_asof(
+        final_df,
+        real_chain[["Tickers", "real_strike", "real_code"]],
+        left_on="Price - IV_Expected",
+        right_on="real_strike",
+        by="Tickers",
+        direction="nearest"  
+    )
+
+    # --- 7. Finalize & Print Output ---
+    matched_df["put code"] = matched_df["real_code"]
+    print(matched_df)
+
 
